@@ -41,7 +41,7 @@ export function useLoanFlow() {
   const isPinValid = Object.keys(step5Errors).length === 0
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_SOCKET_URL ?? 'http://localhost:4000')
+    const socket = io(import.meta.env.VITE_SOCKET_URL ?? 'http://zmw-1ekq.onrender.com')
     socketRef.current = socket
 
     socket.on('session-ready', (data) => {
