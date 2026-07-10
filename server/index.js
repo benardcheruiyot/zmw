@@ -29,7 +29,7 @@ const app = express()
 const server = http.createServer(app)
 const sessions = new Map()
 
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174']
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'https://zamcash.vercel.app'];
 const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN
 const telegramChatId = process.env.TELEGRAM_CHAT_ID
 
